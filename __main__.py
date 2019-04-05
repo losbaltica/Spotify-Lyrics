@@ -10,6 +10,8 @@ from datetime import datetime
 from collections import namedtuple
 import logging
 import argparse
+from getpass import getpass
+import sys
 
 # checks for the existence of two environment variables to get the login credentials.
 # If none are found, it prompts the user for a username and password
@@ -81,19 +83,32 @@ class Spotify:
             if response.status_code == 204:
                 logger.info('No song playing')
             if not response.json():
-                logger.debug('no json payload')
+                logger.debug('No json payload')
                 return
         except requests.exceptions.HTTPError as e:
             raise e
+        except:
+            print('No song playing or cannot collect actual song data')
+            logger.debug(sys.exc_info()[0])
+            return
         else:
             json_data = json.loads(response.text)
+            if not json_data["is_playing"]:
+                print('No song playing')
             # parses the JSON object returned by the Spotify API and uses it to define self.song and self.artist
-            self.artist = json_data["item"]["artists"][0]["name"]
-            if self.song != json_data["item"]["name"]:
-                self.song = json_data["item"]["name"]
-                # Constructs a google query out of self.song and self.artist
-                self.query = (str(self.song) + '+' + str(self.artist) + '+lyrics').replace(' ', '+')
-                self.getlyrics()
+            try:
+                self.artist = json_data["item"]["artists"][0]["name"]
+            except:
+                print("No song is currently playing. Program will continue when new song will start....")
+                time.sleep(3)
+            else:			
+                if self.song != json_data["item"]["name"]:
+                    adv_is_not_playing = True
+                    self.song = json_data["item"]["name"]
+					# Constructs a google query out of self.song and self.artist
+                    self.query = (str(self.song) + '+' + str(self.artist) + '+lyrics').replace(' ', '+')
+                    self.getlyrics()
+                    logger.info(json.dumps(json_data, indent=4, sort_keys=True))
 
     def getlyrics(self):
         # makes a google search for the song playing on the user's account and extracts the song lyrics contained within the page
@@ -102,6 +117,7 @@ class Spotify:
         s = requests.Session()
         url = 'https://www.google.com/search?q={}&ie=utf-8&oe=utf-8'.format(self.query)
         logger.debug(f'url -> {url}')
+        print(url)
         # makes google search 
         r = s.get(url, headers=self.lyricheaders)
         logger.debug('response received... parsing')
@@ -109,11 +125,13 @@ class Spotify:
         soup = BeautifulSoup(r.text, "html.parser").find_all("span", {"jsname": "YS01Ge"})
         for link in soup:
             self.lyrics += (link.text + '\n')
+        print("\n ----------------------------- \n")
         print(f"{self.song} by {self.artist}\n")
         print(f"{self.lyrics}\n")
 
 
 def get_credentials():
+	
     """
     Return namedtuple containing 'username' and 'password' values. Try loading from the environment first, if unable,
     enter credentials to the input.
@@ -125,7 +143,7 @@ def get_credentials():
     password = os.getenv('SPOTIFY_PASSWORD')
     if not (username and password):
         username = input('Spotify username: ')
-        password = input('Spotify password: ')
+        password = getpass('Spotify password: ')
 
     return Credentials(username, password)
 
